@@ -5,7 +5,7 @@ namespace Orq.Core;
 
 public enum TaskState { Pending, Running, Interrupted, Done, Failed, Blocked }
 public enum Phase { Dev, Test, Review, Integrate }
-public enum Outcome { Success, RateLimited, AuthError, Timeout, Unavailable, Failed }
+public enum Outcome { Success, RateLimited, AuthError, Timeout, Unavailable, Failed, NetworkError }
 public enum UsageKind { Known, Estimated, Unknown }
 public enum Role { Requirements, Impact, Developer, Tester, Reviewer, Integrator }
 public enum Complexity { Simple, Medium, Complex }
@@ -103,6 +103,9 @@ public sealed class OrqConfig
     public int TestTimeoutMinutes { get; set; } = 10;
     public int MaxAttemptsPerTask { get; set; } = 3;
     public int CooldownMinutes { get; set; } = 30;
+    public int RedeEsperaInicialMinutos { get; set; } = 1;
+    /// <summary>Repetições após falha transitória de rede; a espera dobra até no máximo oito minutos.</summary>
+    public int RedeMaxTentativas { get; set; } = 6;
     /// <summary>Depois de quantas reprovações da revisão a correção sai do provedor normal e vai para EscalationProvider (modelo models.escalation). 0 desliga.</summary>
     public int EscalarAposReprovacoes { get; set; } = 2;
     /// <summary>Nível intermediário: a partir de N reprovações (e antes de EscalarAposReprovacoes), o provedor normal

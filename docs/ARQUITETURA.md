@@ -1,6 +1,6 @@
-﻿# Arquitetura
+# Arquitetura
 
-O DevLine AI 1.0.0.0 é um CLI (`orq`) e uma biblioteca .NET 10 voltados ao Windows. Roda fora das sessões dos agentes e controla Git, validação, agendamento e persistência em SQLite. [English](ARCHITECTURE.md) · [README](../README.pt-BR.md) · [Metodologia](METODOLOGIA.md) · [História](HISTORIA.md)
+O DevLine AI 1.1.0.0 é um CLI (`orq`) e uma biblioteca .NET 10 voltados ao Windows. Roda fora das sessões dos agentes e controla Git, validação, agendamento e persistência em SQLite. [English](ARCHITECTURE.md) · [README](../README.pt-BR.md) · [Metodologia](METODOLOGIA.md) · [História](HISTORIA.md)
 
 ## Componentes
 
@@ -74,6 +74,7 @@ A resolução do modelo tenta escalada para execução, ou `review` para revisor
 | `AuthError` | Checkpoint/handoff; espera de 24 horas; login exige intervenção manual. |
 | `Unavailable` | Checkpoint/handoff; espera de cinco minutos. |
 | `Timeout` | Checkpoint/handoff; sem espera fixa. |
+| `NetworkError` | Checkpoint/handoff; repete a mesma tarefa/provedor/sessão após 1, 2, 4 e no máximo 8 minutos. `redeEsperaInicialMinutos` define a espera inicial e `redeMaxTentativas` tem padrão de 6 novas tentativas; esgotadas, interrompe a tarefa. Registra eventos `rede`. |
 
 As esperas são guardadas por rótulo de provedor/modelo. A leitura de horário reconhece `resets …am/pm` e `try again at … AM/PM` em formato de 12 horas, usa o horário local da máquina e acrescenta um minuto. Não interpreta datas arbitrárias ou fusos nomeados. Caso contrário, vale a espera configurada. A troca de provedor considera apenas os candidatos do roteamento; sem candidato, a tarefa fica interrompida. `--wait` repete execuções enquanto houver tarefas interrompidas; o cálculo de espera do CLI consulta os nomes base dos provedores, portanto esperas por modelo podem ser consultadas periodicamente, em vez de aguardar exatamente o horário final.
 

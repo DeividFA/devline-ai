@@ -2,7 +2,7 @@
 
 DevLine AI — uma esteira multiagente local que transforma agentes de programação com IA em uma equipe de desenvolvimento disciplinada: um implementa, outro revisa, um terceiro corrige apenas o que foi apontado.
 
-.NET 10 | licença MIT | versão 1.0.0.0
+.NET 10 | licença MIT | versão 1.1.0.0
 
 [English](README.md) · [Arquitetura](docs/ARQUITETURA.md) · [Metodologia](docs/METODOLOGIA.md) · [História](docs/HISTORIA.md) · [Changelog](CHANGELOG.md)
 
@@ -34,7 +34,7 @@ Falhas de validação e mudanças pedidas na revisão voltam ao executor, que co
 
 Várias proteções são correções aprendidas com falhas reais e codificadas como regras determinísticas: auto-reserva Angular de `.ts`/`.spec.ts` existente, detecção repetida de reserva incompleta, cooldown lido da mensagem de limite, atualização com a integração antes do teste e retomada após reinício. Um detector de texto antigo em testes também ajudou o fluxo original; ele pertence à validação da aplicação e não é incluído no motor.
 
-As lições continuam sob controle humano. Coloque as lições aprovadas em `.orq/contexto.md`; o CLI inclui esse contexto nos prompts completos de execução e revisão. Prompts de correção retomados usam o contexto já existente na sessão e enviam o novo retorno. Resultados de testes, violações, tentativas e eventos armazenados permitem inspecionar erros repetidos: a pessoa pode identificar teste/arquivo, contar ocorrências, comparar IDs de tarefas e ler as mensagens registradas. A versão atual informa contagens explícitas de edições repetidas fora da reserva; o agrupamento automático entre tarefas está planejado abaixo. A PESSOA decide o que vira lição e escreve ou aprova o texto. A ferramenta não aprende novas regras autonomamente nem modifica o próprio código.
+As lições continuam sob controle humano. Coloque as lições aprovadas em `.orq/contexto.md`; o CLI inclui esse contexto em todo prompt de execução e revisão. Prompts de correção retomados também recebem o contexto atual e o novo retorno. Resultados de testes, violações, tentativas e eventos armazenados permitem inspecionar erros repetidos: a pessoa pode identificar teste/arquivo, contar ocorrências, comparar IDs de tarefas e ler as mensagens registradas. A versão atual informa contagens explícitas de edições repetidas fora da reserva; o agrupamento automático entre tarefas está planejado abaixo. A PESSOA decide o que vira lição e escreve ou aprova o texto. A ferramenta não aprende novas regras autonomamente nem modifica o próprio código.
 
 ## Proteções (Travas)
 
@@ -62,7 +62,7 @@ orq --version
 orq doctor
 ```
 
-`orq --version` imprime `DevLine AI 1.0.0.0`. `doctor` informa ferramentas, estado da autenticação, modelos locais, skills e concorrência sugerida. Ele verifica os três provedores e pode apontar ferramentas ausentes mesmo que você pretenda usar apenas parte deles.
+`orq --version` imprime `DevLine AI 1.1.0.0`. `doctor` informa ferramentas, estado da autenticação, modelos locais, skills e concorrência sugerida. Ele verifica os três provedores e pode apontar ferramentas ausentes mesmo que você pretenda usar apenas parte deles.
 
 Use um repositório Git de destino com um commit existente e árvore de trabalho limpa:
 
@@ -96,6 +96,7 @@ orq run --repo C:\src\my-app --plan C:\src\my-app\.orq\plan.json --concurrency 1
 orq status --repo C:\src\my-app
 orq resume --repo C:\src\my-app --concurrency 1 --wait
 orq retry --repo C:\src\my-app --task T1
+orq corrigir --repo C:\src\my-app --task T1 --texto "Aplique a correção exata do coordenador."
 orq resume --repo C:\src\my-app --concurrency 1 --wait
 orq report --repo C:\src\my-app
 ```
@@ -103,6 +104,10 @@ orq report --repo C:\src\my-app
 `retry` reabre uma tarefa parada e não concluída, zerando as tentativas; ele não a executa. `resume` continua o plano armazenado. Ctrl+C salva o estado. `--simulate` usa provedores fictícios sem consumir tokens, mas ainda cria worktrees e commits locais reais: use um repositório descartável para ensaiar. `--sim-limit codex` simula um limite. `--only T1,T2` restringe uma frente a esses IDs; `--nome "Lane A"` dá nome a ela. `scripts/watchdog.ps1` pode reabrir lançadores nomeados existentes; veja [Arquitetura](docs/ARQUITETURA.md).
 
 O motor cria commits e merges locais. Nunca faz push. Revise o resultado e então incorpore a branch de integração à sua branch quando decidir.
+
+Use `corrigir` para registrar o diagnóstico do coordenador com o prefixo `Instrução do coordenador:`: o comando zera tentativas, runner/owner e devolve a tarefa não concluída a Dev/Pending. Assim, a fase Teste não sobrescreve a instrução antes do desenvolvimento. Informe exatamente uma opção: `--texto "<instrução>"` ou `--arquivo <caminho.md>`. Uma frente viva é recusada, salvo com `--forcar` explícito. O evento `corrigir` fica registrado; continue com `orq resume` para executar.
+
+Falhas transitórias de rede salvam checkpoint e repetem automaticamente a mesma tarefa na mesma sessão do provedor. A espera cresce de 1 para 2, 4 e no máximo 8 minutos, com eventos `rede`. Após `redeMaxTentativas` novas tentativas, a tarefa fica Interrupted. Limites de uso continuam no fluxo separado de cooldown.
 
 ## Referência de configuração
 
@@ -119,6 +124,8 @@ A configuração fica em `.orq/config.json` no repositório de destino. O JSON u
 | `testTimeoutMinutes` | inteiro | `10` | Tempo máximo de cada comando de validação. |
 | `maxAttemptsPerTask` | inteiro | `3` | Máximo de tentativas de desenvolvimento/análise; chamada sem capacidade disponível não consome tentativa. |
 | `cooldownMinutes` | inteiro | `30` | Espera após limite quando não há horário de retorno reconhecido. |
+| `redeEsperaInicialMinutos` | inteiro | `1` | Espera inicial após falha de rede; dobra até o teto de 8 minutos. |
+| `redeMaxTentativas` | inteiro | `6` | Novas tentativas após a chamada inicial com falha de rede, na mesma tarefa/provedor/sessão; esgotadas, a tarefa fica Interrupted. |
 | `escalarAposReprovacoes` | inteiro | `2` | Reprovações da revisão oficial antes de escalar o provedor; `0` desliga. |
 | `escalarModeloAposReprovacoes` | inteiro | `0` | Reprovações antes de usar o modelo de escalada do provedor atual, antes de escalar o provedor; `0` desliga. |
 | `escalationProvider` | string | `claude` | Provedor usado após a escalada, quando habilitado e registrado. |
@@ -160,6 +167,8 @@ Exemplo de configuração (os scripts de validação pertencem à sua aplicaçã
   "testTimeoutMinutes": 10,
   "maxAttemptsPerTask": 3,
   "cooldownMinutes": 30,
+  "redeEsperaInicialMinutos": 1,
+  "redeMaxTentativas": 6,
   "escalarAposReprovacoes": 0,
   "escalarModeloAposReprovacoes": 0,
   "escalationProvider": "claude",
@@ -231,4 +240,4 @@ multi-agent, ai-coding, claude-code, codex-cli, llm-orchestration, code-review, 
 
 ## Roadmap
 
-**v1.1 — relatório de falhas recorrentes (planejado).** Quando a mesma assinatura de falha aparecer em tarefas diferentes, listar o caso com evidências: teste/arquivo, contagem de ocorrências, IDs das tarefas afetadas e mensagens de erro registradas. Um comando como `orq licoes` (ou interface equivalente) sugeriria um texto de lição. A pessoa aprova, edita ou descarta; só o texto aprovado entra no arquivo de contexto. Esse relatório e fluxo de aprovação não estão implementados na v1.0.0.0.
+**Versão futura — relatório de falhas recorrentes (planejado).** Quando a mesma assinatura de falha aparecer em tarefas diferentes, listar o caso com evidências: teste/arquivo, contagem de ocorrências, IDs das tarefas afetadas e mensagens de erro registradas. Um comando como `orq licoes` (ou interface equivalente) sugeriria um texto de lição. A pessoa aprova, edita ou descarta; só o texto aprovado entra no arquivo de contexto. Esse relatório e fluxo de aprovação não estão implementados na v1.1.0.0.

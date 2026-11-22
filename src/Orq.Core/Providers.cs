@@ -14,7 +14,10 @@ public static partial class Classifier
     [GeneratedRegex(@"(?i)not logged in|unauthori[sz]ed|\b401\b|\b403\b|authentication|invalid api key|/login|login required|credentials|sign in")]
     private static partial Regex AuthRx();
 
-    [GeneratedRegex(@"(?i)ECONNREFUSED|ENOTFOUND|ETIMEDOUT|ECONNRESET|network|\b50[0234]\b|\b529\b|overloaded|service unavailable|connection (refused|reset|error)|stream disconnected|não foi possível iniciar")]
+    [GeneratedRegex(@"(?i)ECONNREFUSED|ENOTFOUND|ETIMEDOUT|ECONNRESET|EHOSTUNREACH|ENETUNREACH|network|reconnecting|connection (failed|failure|refused|reset|error|timed?\s*out|timeout)|connect(?:ion)?[-\s]*timeout|timed?\s*out (?:while )?connect(?:ing)?|error sending request|stream disconnected")]
+    private static partial Regex NetworkRx();
+
+    [GeneratedRegex(@"(?i)\b50[0234]\b|\b529\b|overloaded|service unavailable|não foi possível iniciar")]
     private static partial Regex UnavailableRx();
 
     public static Outcome Classify(string? error)
@@ -22,8 +25,15 @@ public static partial class Classifier
         var e = error ?? "";
         if (RateRx().IsMatch(e)) return Outcome.RateLimited;
         if (AuthRx().IsMatch(e)) return Outcome.AuthError;
+        if (NetworkRx().IsMatch(e)) return Outcome.NetworkError;
         if (UnavailableRx().IsMatch(e)) return Outcome.Unavailable;
         return Outcome.Failed;
+    }
+
+    public static Outcome ProcessFailure(ProcResult pr, string? detail = null)
+    {
+        var outcome = Classify(detail + "\n" + pr.All);
+        return outcome == Outcome.Failed && pr.TimedOut ? Outcome.Timeout : outcome;
     }
 }
 
@@ -61,7 +71,6 @@ public sealed class ClaudeProvider(ProviderConfig cfg) : IProvider
 
     public static ProviderResult Parse(ProcResult pr)
     {
-        if (pr.TimedOut) return new ProviderResult { Outcome = Outcome.Timeout, Error = "tempo limite excedido", Text = pr.Stdout };
         JsonElement? root = null;
         try
         {
@@ -77,7 +86,7 @@ public sealed class ClaudeProvider(ProviderConfig cfg) : IProvider
         if (root is not { } j)
         {
             var err = pr.All;
-            return new ProviderResult { Outcome = pr.Ok ? Outcome.Failed : Classifier.Classify(err), Error = Redactor.Tail(err, 800), Text = pr.Stdout };
+            return new ProviderResult { Outcome = pr.Ok ? Outcome.Failed : Classifier.ProcessFailure(pr), Error = Redactor.Tail(err, 800), Text = pr.Stdout };
         }
 
         var res = new ProviderResult { Text = j.Str("result") ?? "", SessionId = j.Str("session_id") };
@@ -90,10 +99,10 @@ public sealed class ClaudeProvider(ProviderConfig cfg) : IProvider
         if (j.TryGetProperty("total_cost_usd", out var c) && c.ValueKind == JsonValueKind.Number) res.Usage.CostUsd = c.GetDouble();
 
         var isError = j.TryGetProperty("is_error", out var ie) && ie.ValueKind == JsonValueKind.True;
-        if (isError || !pr.Ok)
+        if (isError || !pr.Ok || pr.TimedOut)
         {
             res.Error = Redactor.Tail(res.Text.Length > 0 ? res.Text : pr.All, 800);
-            res.Outcome = Classifier.Classify(res.Error + " " + (j.Str("subtype") ?? "") + " " + j.Num("api_error_status"));
+            res.Outcome = Classifier.ProcessFailure(pr, res.Text + " " + (j.Str("subtype") ?? "") + " " + j.Num("api_error_status"));
         }
         else res.Outcome = Outcome.Success;
         return res;
@@ -178,10 +187,9 @@ public sealed class CodexProvider(ProviderConfig cfg) : IProvider
             catch (JsonException) { }
         }
 
-        if (pr.TimedOut) { res.Outcome = Outcome.Timeout; res.Error = "tempo limite excedido"; return res; }
         if (completed && pr.Ok && error == null) { res.Outcome = Outcome.Success; return res; }
         res.Error = Redactor.Tail(error ?? pr.All, 800);
-        res.Outcome = Classifier.Classify(res.Error);
+        res.Outcome = Classifier.ProcessFailure(pr, error);
         return res;
     }
 }
@@ -208,7 +216,11 @@ public sealed class OllamaProvider(ProviderConfig cfg, HttpMessageHandler? handl
             using var resp = await http.PostAsJsonAsync(url, body, ct);
             var text = await resp.Content.ReadAsStringAsync(ct);
             if (!resp.IsSuccessStatusCode)
-                return new ProviderResult { Outcome = Outcome.Unavailable, Error = $"ollama HTTP {(int)resp.StatusCode}: {Redactor.Head(text, 300)}" };
+            {
+                var error = $"ollama HTTP {(int)resp.StatusCode}: {Redactor.Head(text, 300)}";
+                var outcome = Classifier.Classify(error);
+                return new ProviderResult { Outcome = outcome == Outcome.Failed ? Outcome.Unavailable : outcome, Error = error };
+            }
             using var doc = JsonDocument.Parse(text);
             var j = doc.RootElement;
             var res = new ProviderResult { Outcome = Outcome.Success };
@@ -217,13 +229,15 @@ public sealed class OllamaProvider(ProviderConfig cfg, HttpMessageHandler? handl
             if (string.IsNullOrWhiteSpace(res.Text)) { res.Outcome = Outcome.Failed; res.Error = "resposta vazia"; }
             return res;
         }
-        catch (TaskCanceledException) when (!ct.IsCancellationRequested)
+        catch (TaskCanceledException ex) when (!ct.IsCancellationRequested)
         {
-            return new ProviderResult { Outcome = Outcome.Timeout, Error = "tempo limite excedido" };
+            var network = Classifier.Classify(ex.ToString()) == Outcome.NetworkError;
+            return new ProviderResult { Outcome = network ? Outcome.NetworkError : Outcome.Timeout,
+                Error = network ? ex.Message : "tempo limite excedido" };
         }
         catch (HttpRequestException ex)
         {
-            return new ProviderResult { Outcome = Outcome.Unavailable, Error = "ollama indisponível: " + ex.Message };
+            return new ProviderResult { Outcome = Outcome.NetworkError, Error = "ollama indisponível: " + ex.Message };
         }
     }
 }

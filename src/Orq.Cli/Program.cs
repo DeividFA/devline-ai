@@ -13,6 +13,7 @@ const string Help = """
       orq init    --repo <pasta>          cria .orq/config.json e um plano de exemplo
       orq run     --repo <pasta> --plan <arquivo.json> [--simulate] [--sim-limit <provedor>] [--wait]
       orq retry   --repo <pasta> --task <id>             reabre uma tarefa que falhou (zera tentativas)
+      orq corrigir --repo <pasta> --task <id> (--texto "<instrução>" | --arquivo <caminho.md>) [--forcar]
       orq status  --repo <pasta>          tarefas, responsáveis e provedores
 
     Frentes paralelas (um prompt de comando por frente, mesmo repositório):
@@ -161,6 +162,15 @@ try
             var id = Opt("--task") ?? throw new ArgumentException("informe --task <id>");
             var t = store.Reopen(id);
             Console.WriteLine($"{t.Id} reaberta (fase {t.Phase}); continue com: orq resume");
+            return 0;
+        }
+        case "corrigir":
+        {
+            guard.EnsureAllowed(repo);
+            using var store = new Store(Engine.DbPath(repo));
+            var id = Opt("--task") ?? throw new ArgumentException("informe --task <id>");
+            var t = CliCommands.Corrigir(store, id, Opt("--texto"), Opt("--arquivo"), Flag("--forcar"));
+            Console.WriteLine($"{t.Id}: instrução registrada, fase Dev, estado Pending; continue com: orq resume");
             return 0;
         }
         case "run": return await Execute(true);

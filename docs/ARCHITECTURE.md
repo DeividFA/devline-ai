@@ -1,6 +1,6 @@
 # Architecture
 
-DevLine AI 1.0.0.0 is a Windows-oriented .NET 10 CLI (`orq`) and a core library. It runs outside agent sessions and owns Git, validation, scheduling, and SQLite persistence. [Português](ARQUITETURA.md) · [README](../README.md) · [Methodology](METHODOLOGY.md) · [History](HISTORY.md)
+DevLine AI 1.1.0.0 is a Windows-oriented .NET 10 CLI (`orq`) and a core library. It runs outside agent sessions and owns Git, validation, scheduling, and SQLite persistence. [Português](ARQUITETURA.md) · [README](../README.md) · [Methodology](METHODOLOGY.md) · [History](HISTORY.md)
 
 ## Components
 
@@ -74,6 +74,7 @@ Model resolution tries escalation for non-review work, or `review` for reviewers
 | `AuthError` | Checkpoint/handoff; 24-hour cooldown; login requires manual intervention. |
 | `Unavailable` | Checkpoint/handoff; five-minute cooldown. |
 | `Timeout` | Checkpoint/handoff; no fixed cooldown. |
+| `NetworkError` | Checkpoint/handoff; retry the same task/provider/session after 1, 2, 4, then at most 8 minutes. `redeEsperaInicialMinutos` sets the initial wait and `redeMaxTentativas` defaults to 6 retries; exhaustion interrupts the task. Log `rede` events. |
 
 Cooldowns are stored by provider/model label. Reset parsing recognizes 12-hour `resets …am/pm` and `try again at … AM/PM`, uses the machine's local time, and adds one minute. It does not interpret arbitrary dates or named time zones. Otherwise the configured fallback applies. Failover considers only routing candidates; no candidate leaves the task interrupted. `--wait` repeats runs while interrupted tasks remain; the CLI wait calculation looks up base provider names, so model-specific waits can be polled rather than slept until exactly.
 

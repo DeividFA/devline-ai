@@ -10,6 +10,16 @@ Reserve all affected files, including the `.ts` behind every Angular template an
 
 Set the executor as the task's `provider`, choose `revisorProvider` separately, and use `execucaoSoNoPreferido: true` to preserve reviewer capacity when the executor hits a limit. To prevent provider escalation, set `escalarAposReprovacoes: 0`; model escalation is a separate setting. Available models and budgets determine the actual setup, not a fixed brand pairing.
 
+## Regras por área no contexto do projeto
+
+Keep area-specific development rules in `.orq/contexto.md`. The CLI loads this file and includes its content in every execution and review prompt, including resumed corrections, self-review, and incremental review. Update it with human-approved lessons so every role receives the same project rules.
+
+Generic frontend example:
+
+> One behavior = one component. Do not build a custom table, modal, or button inside a screen; use shared components. Delete unused code. Add an automatic test guard that fails on violations. If a capability is missing, extend the shared component.
+
+Describe similarly concrete rules for other areas, including where shared code belongs and which automatic check enforces the rule. Keep the rules verifiable and free of project/client names.
+
 ## Keep the review actionable
 
 Ask for all blocking issues in one pass. Each blocker needs:
@@ -38,9 +48,9 @@ The engine automatically returns validation failures and review corrections to e
 
 Built-in safeguards encode lessons from actual errors: automatic `.ts`/existing `.spec.ts` reservations, incomplete-reservation detection, message-based cooldowns, integration updates before testing, and restart recovery. Detecting old text still expected in tests was another corrective rule in the original application validation, not a bundled engine feature.
 
-The lessons file is human-curated memory. `.orq/contexto.md` goes into full execution and review prompts; resumed corrections use the existing session context and new feedback. The engine records tests, violations, attempts, and events for inspection. A person can compare tasks, identify the recurring test/file and message, and count repetitions; repeated scope violations already report counts explicitly. The person chooses which observation becomes a lesson and its exact wording. This is feedback-driven correction with human-maintained rules, not autonomous learning or self-modifying AI.
+The lessons file is human-curated memory. `.orq/contexto.md` goes into every execution and review prompt; resumed corrections also receive the current context and new feedback. The engine records tests, violations, attempts, and events for inspection. A person can compare tasks, identify the recurring test/file and message, and count repetitions; repeated scope violations already report counts explicitly. The person chooses which observation becomes a lesson and its exact wording. This is feedback-driven correction with human-maintained rules, not autonomous learning or self-modifying AI.
 
-For v1.1, a planned recurring-failure report would group the same signature across tasks and show the test/file, counts, task IDs, error messages, and a suggested lesson through `orq licoes` or an equivalent interface. The person would approve, edit, or discard the suggestion; only approved text would enter the context file. Cross-task grouping and this approval workflow are roadmap items, not current commands.
+For a future release, a planned recurring-failure report would group the same signature across tasks and show the test/file, counts, task IDs, error messages, and a suggested lesson through `orq licoes` or an equivalent interface. The person would approve, edit, or discard the suggestion; only approved text would enter the context file. Cross-task grouping and this approval workflow are roadmap items, not current commands.
 
 ## Eight lessons to carry into prompts
 

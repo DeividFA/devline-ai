@@ -2,7 +2,7 @@
 
 DevLine AI — a local multi-agent pipeline that turns AI coding agents into a disciplined dev team: one implements, another reviews, a third fixes only what was flagged.
 
-.NET 10 | license MIT | version 1.0.0.0
+.NET 10 | license MIT | version 1.1.0.0
 
 [Português (Brasil)](README.pt-BR.md) · [Architecture](docs/ARCHITECTURE.md) · [Methodology](docs/METHODOLOGY.md) · [History](docs/HISTORY.md) · [Changelog](CHANGELOG.md)
 
@@ -34,7 +34,7 @@ Validation failures and requested review changes return to the executor, which c
 
 Several safeguards are corrections learned from real failures and encoded as deterministic rules: automatic Angular `.ts`/existing `.spec.ts` reservations, repeated incomplete-reservation detection, cooldowns parsed from limit messages, integration updates before testing, and restart recovery. An old-text-in-tests detector also helped the original workflow; it belongs to application validation and is not bundled in the engine.
 
-Lessons remain under human control. Put approved lessons in `.orq/contexto.md`; the CLI includes that context in full execution and review prompts. Resumed correction prompts rely on the session's existing context and send the new feedback. Stored test results, violations, attempts, and events make repeated errors inspectable: the person can identify the test/file, count occurrences, compare task IDs, and read the recorded messages. The current version emits explicit counts for repeated out-of-reservation edits; automatic cross-task failure grouping is planned below. A PERSON decides what becomes a lesson and writes or approves its wording. The tool does not autonomously learn new rules or modify its own code.
+Lessons remain under human control. Put approved lessons in `.orq/contexto.md`; the CLI includes that context in every execution and review prompt. Resumed correction prompts also include the current context and new feedback. Stored test results, violations, attempts, and events make repeated errors inspectable: the person can identify the test/file, count occurrences, compare task IDs, and read the recorded messages. The current version emits explicit counts for repeated out-of-reservation edits; automatic cross-task failure grouping is planned below. A PERSON decides what becomes a lesson and writes or approves its wording. The tool does not autonomously learn new rules or modify its own code.
 
 ## Safeguards (Travas)
 
@@ -62,7 +62,7 @@ orq --version
 orq doctor
 ```
 
-`orq --version` prints `DevLine AI 1.0.0.0`. `doctor` reports tools, authentication status, local models, skills, and suggested concurrency. It checks all three providers and can report missing tools even when you only plan to use a subset.
+`orq --version` prints `DevLine AI 1.1.0.0`. `doctor` reports tools, authentication status, local models, skills, and suggested concurrency. It checks all three providers and can report missing tools even when you only plan to use a subset.
 
 Use a target Git repository with an existing commit and a clean working tree:
 
@@ -96,11 +96,16 @@ orq run --repo C:\src\my-app --plan C:\src\my-app\.orq\plan.json --concurrency 1
 orq status --repo C:\src\my-app
 orq resume --repo C:\src\my-app --concurrency 1 --wait
 orq retry --repo C:\src\my-app --task T1
+orq corrigir --repo C:\src\my-app --task T1 --texto "Apply the coordinator's exact correction."
 orq resume --repo C:\src\my-app --concurrency 1 --wait
 orq report --repo C:\src\my-app
 ```
 
 `retry` reopens a stopped, unfinished task and resets attempts; it does not run it. `resume` continues the stored plan. Ctrl+C saves state. `--simulate` uses fake providers without spending tokens, but still creates real local worktrees and commits: use a disposable target repository for a dry run. `--sim-limit codex` simulates a limit. `--only T1,T2` restricts a runner to those IDs; `--nome "Lane A"` names it. `scripts/watchdog.ps1` can reopen existing named launchers; see [Architecture](docs/ARCHITECTURE.md).
+
+Use `corrigir` for a coordinator's diagnosis: it records feedback prefixed with `Instrução do coordenador:`, resets attempts and runner/owner, and returns an unfinished task to Dev/Pending. This prevents Test from overwriting the instruction before development resumes. Supply exactly one of `--texto "<instruction>"` or `--arquivo <path.md>`; an active runner is refused unless `--forcar` is explicit. The command records a `corrigir` event and does not execute the task; continue with `orq resume`.
+
+Transient network failures checkpoint and retry the same task in the same provider session, without manual intervention or provider failover. Waits grow from 1 to 2, 4, then at most 8 minutes, with `rede` events. After `redeMaxTentativas` retries the task becomes Interrupted. Usage limits retain their separate cooldown flow.
 
 The engine creates local commits and merges. It never pushes. Review the result, then merge the integration branch into your branch yourself when ready.
 
@@ -119,6 +124,8 @@ Configuration lives in the target repository's `.orq/config.json`. JSON uses cam
 | `testTimeoutMinutes` | integer | `10` | Timeout for each validation hook. |
 | `maxAttemptsPerTask` | integer | `3` | Maximum development/analysis attempts; a call without available capacity does not consume one. |
 | `cooldownMinutes` | integer | `30` | Rate-limit fallback wait when no recognized reset time is present. |
+| `redeEsperaInicialMinutos` | integer | `1` | Initial network retry wait; doubles each time, capped at 8 minutes. |
+| `redeMaxTentativas` | integer | `6` | Network retries after the initial failed call, keeping the same task/provider/session; exhaustion interrupts the task. |
 | `escalarAposReprovacoes` | integer | `2` | Official review rejections before provider escalation; `0` disables it. |
 | `escalarModeloAposReprovacoes` | integer | `0` | Rejections before using the current provider's escalation model, before provider escalation; `0` disables it. |
 | `escalationProvider` | string | `claude` | Provider used after provider escalation, when enabled and registered. |
@@ -160,6 +167,8 @@ Example configuration (hook scripts belong to your application; create them befo
   "testTimeoutMinutes": 10,
   "maxAttemptsPerTask": 3,
   "cooldownMinutes": 30,
+  "redeEsperaInicialMinutos": 1,
+  "redeMaxTentativas": 6,
   "escalarAposReprovacoes": 0,
   "escalarModeloAposReprovacoes": 0,
   "escalationProvider": "claude",
@@ -231,4 +240,4 @@ multi-agent, ai-coding, claude-code, codex-cli, llm-orchestration, code-review, 
 
 ## Roadmap
 
-**v1.1 — recurring-failure report (planned).** When the same failure signature appears across different tasks, list the case with evidence: test/file, occurrence count, affected task IDs, and recorded error messages. A command such as `orq licoes` (or an equivalent interface) would suggest lesson text. A person approves, edits, or discards it; only approved text enters the context file. This report and approval workflow are not implemented in v1.0.0.0.
+**Future release — recurring-failure report (planned).** When the same failure signature appears across different tasks, list the case with evidence: test/file, occurrence count, affected task IDs, and recorded error messages. A command such as `orq licoes` (or an equivalent interface) would suggest lesson text. A person approves, edits, or discards it; only approved text enters the context file. This report and approval workflow are not implemented in v1.1.0.0.

@@ -169,7 +169,7 @@ public class ParsingTests
     [InlineData("Claude AI usage limit reached", Outcome.RateLimited)]
     [InlineData("HTTP 429 Too Many Requests", Outcome.RateLimited)]
     [InlineData("Not logged in · Please run /login", Outcome.AuthError)]
-    [InlineData("connect ECONNREFUSED 127.0.0.1:443", Outcome.Unavailable)]
+    [InlineData("connect ECONNREFUSED 127.0.0.1:443", Outcome.NetworkError)]
     [InlineData("API Error: 529 overloaded", Outcome.Unavailable)]
     [InlineData("syntax error in file", Outcome.Failed)]
     public void Erros_SaoClassificados(string message, Outcome expected) =>

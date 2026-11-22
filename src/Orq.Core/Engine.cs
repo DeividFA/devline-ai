@@ -66,6 +66,8 @@ public sealed class Engine
     // ------------------------------------------------------------------ laço principal
 
     public TimeSpan DependencyPoll { get; init; } = TimeSpan.FromSeconds(30);
+    /// <summary>Atraso de reconexão injetável para testar sem esperar minutos reais.</summary>
+    public Func<TimeSpan, CancellationToken, Task> NetworkDelay { get; init; } = Task.Delay;
 
     private bool Mine(TaskItem t) => _only == null || _only.Contains(t.Id);
 
@@ -334,6 +336,7 @@ public sealed class Engine
                     {
                         t.SelfReviewDone = true;
                         var self = await Call(t, Role.Reviewer, (p, _) => Prompts.SelfReview(t, Redactor.Head(diff, 30000), _cfg.Context), wt, true, null, ct, new[] { auto! });
+                        if (t.State == TaskState.Interrupted) { t.SelfReviewDone = false; Park(t); return; }
                         if (self != null && self.Result.Outcome == Outcome.Success)
                         {
                             var sv = Json.LastObject(self.Result.Text);
@@ -529,68 +532,103 @@ public sealed class Engine
             await _slots[name].WaitAsync(ct);
             try
             {
-                var key = $"{name}:{role}";
-                t.Sessions.TryGetValue(key, out var sid);
-                var text = prompt(p, sid != null);
-                var req = new AgentRequest
+                var networkRetries = 0;
+                while (true)
                 {
-                    TaskId = t.Id, Role = role, Prompt = text, Cwd = cwd, ReadOnly = readOnly, Files = t.Files,
-                    ResumeSessionId = sid, Timeout = TimeSpan.FromMinutes(_cfg.TaskTimeoutMinutes), Model = model,
-                    ReadDirs = t.Skills.Select(s => _cfg.SkillDir(name, s)!).Append(CapturasDir(t)).ToList(),
-                };
-                var aid = _store.StartAttempt(t.Id, role, label);
-                Log(t.Id, "call", $"{Profiles.For(role).Name} → {label}{(sid != null ? " (sessão retomada)" : "")}");
-                ProviderResult r;
-                try { r = await p.RunAsync(req, ct); }
-                catch (OperationCanceledException) { _store.EndAttempt(aid, "Interrupted", null, sid, null); throw; }
-                catch (Exception ex) { r = new ProviderResult { Outcome = Outcome.Unavailable, Error = ex.Message }; }
+                    ct.ThrowIfCancellationRequested();
+                    if (!BudgetAllows(out why)) { t.NextAction = why; return null; }
+                    var key = $"{name}:{role}";
+                    t.Sessions.TryGetValue(key, out var sid);
+                    var text = prompt(p, sid != null);
+                    var req = new AgentRequest
+                    {
+                        TaskId = t.Id, Role = role, Prompt = text, Cwd = cwd, ReadOnly = readOnly, Files = t.Files,
+                        ResumeSessionId = sid, Timeout = TimeSpan.FromMinutes(_cfg.TaskTimeoutMinutes), Model = model,
+                        ReadDirs = t.Skills.Select(s => _cfg.SkillDir(name, s)!).Append(CapturasDir(t)).ToList(),
+                    };
+                    var aid = _store.StartAttempt(t.Id, role, label);
+                    Log(t.Id, "call", $"{Profiles.For(role).Name} → {label}{(sid != null ? " (sessão retomada)" : "")}");
+                    ProviderResult r;
+                    try { r = await p.RunAsync(req, ct); }
+                    catch (OperationCanceledException) { _store.EndAttempt(aid, "Interrupted", null, sid, null); throw; }
+                    catch (Exception ex)
+                    {
+                        var outcome = Classifier.Classify(ex.Message);
+                        r = new ProviderResult { Outcome = outcome == Outcome.Failed ? Outcome.Unavailable : outcome, Error = ex.Message };
+                    }
 
-                if (r.Usage.Kind == UsageKind.Unknown && r.Outcome == Outcome.Success)
-                    r.Usage = new Usage { Input = text.Length / 4, Output = r.Text.Length / 4, Kind = UsageKind.Estimated };
-                lock (_sync)
-                {
-                    _calls++;
-                    _cost += r.Usage.CostUsd ?? 0;
-                    _tokens += r.Usage.Input + r.Usage.Output;
-                }
-                _store.EndAttempt(aid, r.Outcome.ToString(), r.Usage, r.SessionId, r.Error);
+                    if (r.Outcome is not (Outcome.Success or Outcome.RateLimited or Outcome.AuthError))
+                    {
+                        var classified = Classifier.Classify(r.Error);
+                        if (classified is Outcome.NetworkError or Outcome.RateLimited or Outcome.AuthError) r.Outcome = classified;
+                    }
 
-                if (r.Outcome == Outcome.Success)
-                {
+                    if (r.Usage.Kind == UsageKind.Unknown && r.Outcome == Outcome.Success)
+                        r.Usage = new Usage { Input = text.Length / 4, Output = r.Text.Length / 4, Kind = UsageKind.Estimated };
+                    lock (_sync)
+                    {
+                        _calls++;
+                        _cost += r.Usage.CostUsd ?? 0;
+                        _tokens += r.Usage.Input + r.Usage.Output;
+                    }
+                    _store.EndAttempt(aid, r.Outcome.ToString(), r.Usage, r.SessionId, r.Error);
+
+                    if (r.Outcome == Outcome.Success)
+                    {
+                        if (r.SessionId != null) t.Sessions[key] = r.SessionId;
+                        _store.SetProvider(label, null, "Success", null);
+                        return new CallResult(name, p, r);
+                    }
+                    if (r.Outcome == Outcome.Failed)
+                    {
+                        t.Sessions.Remove(key); // sessão possivelmente inválida: a próxima tentativa recomeça com o contrato completo
+                        return new CallResult(name, p, r);
+                    }
+
+                    // Checkpoint + handoff; rede repete a sessão, os demais seguem o fluxo de failover.
+                    var minutes = r.Outcome switch
+                    {
+                        Outcome.RateLimited => _cfg.CooldownMinutes,
+                        Outcome.AuthError => 24 * 60,
+                        Outcome.Unavailable => 5,
+                        _ => 0,
+                    };
+                    var ate = minutes > 0 ? DateTime.UtcNow.AddMinutes(minutes) : (DateTime?)null;
+                    if (r.Outcome == Outcome.RateLimited && Travas.VoltaDoLimite(r.Error, DateTime.Now) is { } volta)
+                        ate = volta.ToUniversalTime();
+                    _store.SetProvider(label, ate, r.Outcome.ToString(), r.Error);
                     if (r.SessionId != null) t.Sessions[key] = r.SessionId;
-                    _store.SetProvider(label, null, "Success", null);
-                    return new CallResult(name, p, r);
+                    var stat = "";
+                    if (!readOnly)
+                    {
+                        await ScopeCheck(t, cwd);
+                        await Commit(cwd, $"orq: checkpoint {t.Id} ({name} interrompido: {r.Outcome})");
+                        stat = (await _git.Run(cwd, "diff", "--stat", _cfg.IntegrationBranch + "...HEAD")).Stdout;
+                    }
+                    t.Handoff = Prompts.Handoff(t, name, r.Outcome, r.Text, stat);
+                    _store.Save(t);
+                    if (r.Outcome == Outcome.NetworkError)
+                    {
+                        if (networkRetries >= Math.Max(0, _cfg.RedeMaxTentativas))
+                        {
+                            t.State = TaskState.Interrupted;
+                            t.NextAction = $"falha de rede: {_cfg.RedeMaxTentativas} tentativa(s) de reconexão esgotada(s); continue com: orq resume";
+                            Log(t.Id, "rede", t.NextAction);
+                            return null;
+                        }
+                        var minutesWait = Math.Min(8, Math.Max(1, _cfg.RedeEsperaInicialMinutos) * Math.Pow(2, Math.Min(networkRetries, 3)));
+                        networkRetries++;
+                        t.NextAction = $"rede indisponível; aguardando {minutesWait} minuto(s) para reconexão {networkRetries}/{_cfg.RedeMaxTentativas}";
+                        _store.Save(t);
+                        Log(t.Id, "rede", $"{label}: {r.Error}. Checkpoint salvo; {t.NextAction}, na mesma sessão.");
+                        await NetworkDelay(TimeSpan.FromMinutes(minutesWait), ct);
+                        t.NextAction = null;
+                        continue;
+                    }
+                    reason = $"{name}: {r.Outcome}";
+                    Log(t.Id, "failover", $"{name} indisponível ({r.Outcome}): {r.Error}. Estado salvo; tentando outro provedor.");
+                    break;
                 }
-                if (r.Outcome == Outcome.Failed)
-                {
-                    t.Sessions.Remove(key); // sessão possivelmente inválida: a próxima tentativa recomeça com o contrato completo
-                    return new CallResult(name, p, r);
-                }
-
-                // Limite, autenticação, indisponibilidade ou timeout: checkpoint + handoff + próximo provedor.
-                var minutes = r.Outcome switch
-                {
-                    Outcome.RateLimited => _cfg.CooldownMinutes,
-                    Outcome.AuthError => 24 * 60,
-                    Outcome.Unavailable => 5,
-                    _ => 0,
-                };
-                var ate = minutes > 0 ? DateTime.UtcNow.AddMinutes(minutes) : (DateTime?)null;
-                if (r.Outcome == Outcome.RateLimited && Travas.VoltaDoLimite(r.Error, DateTime.Now) is { } volta)
-                    ate = volta.ToUniversalTime();
-                _store.SetProvider(label, ate, r.Outcome.ToString(), r.Error);
-                if (r.SessionId != null) t.Sessions[key] = r.SessionId;
-                var stat = "";
-                if (!readOnly)
-                {
-                    await ScopeCheck(t, cwd);
-                    await Commit(cwd, $"orq: checkpoint {t.Id} ({name} interrompido: {r.Outcome})");
-                    stat = (await _git.Run(cwd, "diff", "--stat", _cfg.IntegrationBranch + "...HEAD")).Stdout;
-                }
-                t.Handoff = Prompts.Handoff(t, name, r.Outcome, r.Text, stat);
-                _store.Save(t);
-                reason = $"{name}: {r.Outcome}";
-                Log(t.Id, "failover", $"{name} indisponível ({r.Outcome}): {r.Error}. Estado salvo; tentando outro provedor.");
             }
             finally { _slots[name].Release(); }
         }
