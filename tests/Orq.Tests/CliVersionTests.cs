@@ -14,12 +14,12 @@ public class CliVersionTests
             Path.GetTempPath(), null, TimeSpan.FromSeconds(30), CancellationToken.None);
 
         Assert.True(result.Ok, result.All);
-        Assert.Equal("DevLine AI 1.0.0.0", result.Stdout.Trim());
+        Assert.Equal("DevLine AI 1.1.0.0", result.Stdout.Trim());
         Assert.Equal("", result.Stderr);
         foreach (var assembly in new[] { cli, typeof(OrqConfig).Assembly })
         {
-            Assert.Equal(new Version(1, 0, 0, 0), assembly.GetName().Version);
-            Assert.Equal("1.0.0.0", assembly.GetCustomAttribute<AssemblyFileVersionAttribute>()!.Version);
+            Assert.Equal(new Version(1, 1, 0, 0), assembly.GetName().Version);
+            Assert.Equal("1.1.0.0", assembly.GetCustomAttribute<AssemblyFileVersionAttribute>()!.Version);
             Assert.Equal("DevLine AI", assembly.GetCustomAttribute<AssemblyProductAttribute>()!.Product);
         }
     }

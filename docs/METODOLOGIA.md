@@ -10,6 +10,16 @@ Reserve todos os arquivos afetados, incluindo o `.ts` por trás de cada template
 
 Defina o executor em `provider` na tarefa, escolha `revisorProvider` separadamente e use `execucaoSoNoPreferido: true` para preservar a capacidade do revisor quando o executor atingir um limite. Para impedir escalada de provedor, use `escalarAposReprovacoes: 0`; a escalada de modelo é uma configuração separada. Modelos e orçamentos disponíveis determinam a configuração, não uma dupla fixa de marcas.
 
+## Regras por área no contexto do projeto
+
+Registre as regras de desenvolvimento de cada área em `.orq/contexto.md`. A CLI carrega o arquivo e inclui seu conteúdo em todo prompt de execução e de revisão, inclusive correções retomadas, auto-revisão e revisão incremental. Atualize-o com lições aprovadas por uma pessoa para todos os papéis receberem as mesmas regras do projeto.
+
+Exemplo genérico de regra de front:
+
+> Um comportamento = um componente; proibido montar tabela/modal/botão próprio na tela: use os componentes compartilhados. Código sem uso é apagado. Uma guarda automática no teste reprova violações. Se faltar recurso, evolua o componente compartilhado.
+
+Escreva regras igualmente concretas para as demais áreas, indicando onde fica o código compartilhado e qual verificação automática garante a regra. Mantenha regras verificáveis, sem nomes de projeto ou cliente.
+
 ## Tornar a revisão executável
 
 Peça todos os bloqueios numa única rodada. Cada bloqueio precisa de:
@@ -38,9 +48,9 @@ O motor devolve automaticamente falhas de validação e correções da revisão 
 
 As proteções embutidas codificam lições de erros reais: auto-reserva de `.ts`/`.spec.ts` existente, detecção de reserva incompleta, cooldown pela mensagem, atualização com a integração antes do teste e retomada após reinício. Detectar texto antigo ainda esperado em testes foi outra regra corretiva na validação da aplicação original, não um recurso incluído no motor.
 
-O arquivo de lições é uma memória mantida por uma pessoa. `.orq/contexto.md` entra nos prompts completos de execução e revisão; correções retomadas usam o contexto existente da sessão e o novo retorno. O motor registra testes, violações, tentativas e eventos para inspeção. A pessoa pode comparar tarefas, identificar teste/arquivo e mensagem recorrentes e contar repetições; violações de reserva repetidas já informam contagens explicitamente. A pessoa escolhe qual observação vira lição e o texto exato. É correção por retorno com regras mantidas por humanos, não aprendizado autônomo ou IA que modifica a si própria.
+O arquivo de lições é uma memória mantida por uma pessoa. `.orq/contexto.md` entra em todo prompt de execução e revisão; correções retomadas também recebem o contexto atual e o novo retorno. O motor registra testes, violações, tentativas e eventos para inspeção. A pessoa pode comparar tarefas, identificar teste/arquivo e mensagem recorrentes e contar repetições; violações de reserva repetidas já informam contagens explicitamente. A pessoa escolhe qual observação vira lição e o texto exato. É correção por retorno com regras mantidas por humanos, não aprendizado autônomo ou IA que modifica a si própria.
 
-Para a v1.1, um relatório planejado de falhas recorrentes agruparia a mesma assinatura entre tarefas e mostraria teste/arquivo, contagens, IDs, mensagens de erro e sugestão de lição por `orq licoes` ou interface equivalente. A pessoa aprovaria, editaria ou descartaria a sugestão; só o texto aprovado entraria no arquivo de contexto. Agrupamento entre tarefas e esse fluxo de aprovação são itens de roadmap, não comandos atuais.
+Para uma versão futura, um relatório planejado de falhas recorrentes agruparia a mesma assinatura entre tarefas e mostraria teste/arquivo, contagens, IDs, mensagens de erro e sugestão de lição por `orq licoes` ou interface equivalente. A pessoa aprovaria, editaria ou descartaria a sugestão; só o texto aprovado entraria no arquivo de contexto. Agrupamento entre tarefas e esse fluxo de aprovação são itens de roadmap, não comandos atuais.
 
 ## Oito lições para levar aos prompts
 

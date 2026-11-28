@@ -150,6 +150,46 @@ public sealed class Store : IDisposable
         return t;
     }
 
+    /// <summary>Devolve ao desenvolvimento com a instrução explícita do coordenador.</summary>
+    public TaskItem Corrigir(string id, string instrucao, bool forcar = false)
+    {
+        if (string.IsNullOrWhiteSpace(instrucao)) throw new ArgumentException("A instrução do coordenador não pode estar vazia.");
+        lock (_l)
+        {
+            var t = Get(id) ?? throw new InvalidOperationException($"Tarefa {id} não existe.");
+            if (t.State == TaskState.Done) throw new InvalidOperationException($"Tarefa {id} já está concluída.");
+            if (!forcar && t.RunnerPid is { } pid && ProcessoAtivo(pid))
+                throw new InvalidOperationException($"Tarefa {id} está em uma frente viva (processo {pid}); pare a frente antes ou use --forcar.");
+
+            t.Feedback = "Instrução do coordenador:\n" + instrucao.Trim();
+            t.Phase = Phase.Dev;
+            t.State = TaskState.Pending;
+            t.RunnerPid = null;
+            t.Owner = null;
+            t.Attempts = 0;
+            t.SelfReviewDone = false;
+            t.LastReviewedCommit = null;
+            t.LastReviewFiles.Clear();
+            t.LastReviewNotes = null;
+            t.Handoff = null;
+            t.NextAction = "instrução do coordenador registrada; continue com: orq resume";
+            Save(t);
+            Event(t.Id, "corrigir", t.Feedback);
+            return t;
+        }
+    }
+
+    private static bool ProcessoAtivo(int pid)
+    {
+        try
+        {
+            using var p = System.Diagnostics.Process.GetProcessById(pid);
+            return !p.HasExited;
+        }
+        catch (ArgumentException) { return false; }
+        catch (InvalidOperationException) { return false; }
+    }
+
     public List<AttemptRow> Attempts() => Query(
         "SELECT id,task_id,role,provider,started,ended,outcome,input_tokens,output_tokens,cost_usd,usage_kind,session_id,error FROM attempts ORDER BY id",
         r => new AttemptRow(r.GetInt64(0), r.GetString(1), r.GetString(2), r.GetString(3), r.GetString(4), S(r, 5), S(r, 6),

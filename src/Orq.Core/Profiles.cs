@@ -134,7 +134,8 @@ public static class Prompts
         var sb = new StringBuilder();
         if (resumed && t.Feedback != null)
         {
-            // Sessão retomada: o agente já conhece a tarefa; envia-se só o que mudou.
+            if (!string.IsNullOrWhiteSpace(context)) sb.AppendLine("# Contexto do projeto").AppendLine(context.Trim()).AppendLine();
+            // Sessão retomada: inclui o contexto atual e a correção, sem repetir o contrato completo.
             sb.AppendLine($"Continuação da tarefa {t.Id}. Corrija o problema abaixo, mantendo as mesmas regras e o mesmo formato de resposta.");
             if (t.Feedback.StartsWith("O revisor", StringComparison.Ordinal))
                 sb.AppendLine("Corrija SOMENTE os pontos listados pelo revisor, aplicando a correção indicada em cada um. Não reanalise a tarefa nem altere outras partes; se algum ponto não puder ser feito como indicado, diga por quê no relatório.");

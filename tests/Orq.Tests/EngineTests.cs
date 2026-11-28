@@ -69,7 +69,7 @@ public class EngineTests
     public async Task FalhaDeProvedor_OutroAssume()
     {
         using var env = new TestEnv();
-        env.Codex.Script = (_, _, _) => Task.FromResult<ProviderResult?>(TestEnv.Fail(Outcome.Unavailable, "ECONNREFUSED"));
+        env.Codex.Script = (_, _, _) => Task.FromResult<ProviderResult?>(TestEnv.Fail(Outcome.Unavailable, "service unavailable"));
         env.Add("A", Complexity.Medium, new[] { "a.txt" });
 
         var s = await env.NewEngine().RunAsync(CancellationToken.None);

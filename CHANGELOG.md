@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.1.0.0 — 2026-11-21
+
+- Added `orq corrigir --repo <repo> --task <id> (--texto "<instruction>" | --arquivo <path.md>) [--forcar]`. It records coordinator feedback, forces Dev/Pending, resets attempts and runner/owner, and records a `corrigir` event. Active runners are refused unless forced. Previously, restarting a lane with a task still in Test reran validation and OVERWROTE the coordinator's instruction with the failure log; correction now starts in development with that instruction intact.
+- Transient network failures now checkpoint and retry the same task/provider/session automatically, with `rede` events and waits of 1, 2, 4, then at most 8 minutes. `redeEsperaInicialMinutos` defaults to 1 and `redeMaxTentativas` to 6 retries after the initial call. Exhaustion interrupts the task; usage limits keep the existing cooldown flow.
+- Added generic development rules by area to both methodology guides. `.orq/contexto.md` is included in every execution and review prompt, including resumed corrections; shared frontend components, removal of unused code, and automatic violation checks are illustrated without project/client names.
+- Version metadata and `orq --version` now report `DevLine AI 1.1.0.0`.
+
 ## 1.0.0.0 — 2026-11-20
 
 First public release of **DevLine AI**; the command remains `orq`.
